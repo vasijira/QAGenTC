@@ -1,0 +1,94 @@
+body {
+    background: #f8fafc;
+}
+
+.section-box {
+    background: #ffffff;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 24px;
+}
+
+.section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #475569;
+}
+
+.input, .textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    padding: 10px;
+    border-radius: 8px;
+    margin-top: 4px;
+}
+
+.drop-zone {
+    border: 2px dashed #94a3b8;
+    border-radius: 10px;
+    padding: 25px;
+    text-align: center;
+    transition: 0.25s;
+    background: #f8fafc;
+}
+
+.drop-zone.dragover {
+    border-color: #2563eb;
+    background: #dbeafe;
+}
+
+.btn-upload {
+    background: #1e293b;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+}
+
+.btn-generate {
+    width: 100%;
+    background: #0f172a;
+    color: white;
+    padding: 12px;
+    border-radius: 8px;
+}
+
+.btn-export {
+    background: #15803d;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+}
+
+.btn-copy {
+    background: #ea580c;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+}
+
+.btn-blue {
+    background: #2563eb;
+    color: white;
+    padding: 8px 14px;
+    border-radius: 6px;
+}
+
+.btn-gray {
+    background: #475569;
+    color: white;
+    padding: 8px 14px;
+    border-radius: 6px;
+}
+
+.table-h {
+    padding: 10px;
+    border: 1px solid #cbd5e1;
+    font-weight: 600;
+}

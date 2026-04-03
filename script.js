@@ -505,6 +505,7 @@ rawList = enrichNegativeAndEmpty(rawList);
 
 jsonOutput = rawList;
 renderAccordion(jsonOutput);
+bindToggleSingleTestCase();
 document.getElementById("exportSection").classList.remove("hidden");
 ``
 
@@ -530,7 +531,7 @@ function renderAccordion(list) {
       <div class="border rounded bg-white mb-3">
 
         <!-- HEADER: จะแสดงตลอด -->
-        <div class="p-3 font-semibold bg-slate-100">
+        <div class="tc-header p-3 font-semibold bg-slate-100 cursor-pointer">
           ${generateTCNumber(i)} — ${tc.title}
         </div>
 
@@ -568,6 +569,18 @@ function renderAccordion(list) {
     `);
   });
 }
+
+function bindToggleSingleTestCase() {
+  document.querySelectorAll(".tc-header").forEach(header => {
+    header.onclick = () => {
+      const detail = header.nextElementSibling;
+      if (!detail) return;
+
+      detail.classList.toggle("hidden");
+    };
+  });
+}
+``
 
 function copySingleToJira(i) {
   const tc = normalizeTestCase(jsonOutput[i]);

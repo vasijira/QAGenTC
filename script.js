@@ -4,6 +4,9 @@
 let pastedImages = [];
 let jsonOutput = [];
 
+// ✅ Feature flag: Toggle Option 4 enrichment
+const ENABLE_OPTION_4_ENRICH = true;
+
 /* ============================================================
    COLUMN STRUCTURE (Editable + Default Value)
 ============================================================ */
@@ -31,24 +34,53 @@ let dynamicColumns = [
 ];
 
 /* ============================================================
-   PROMPT
+   ✅ PROMPT – DETAILED + MULTI-IMAGE ENFORCED
 ============================================================ */
 const PROMPT = `
-You are a professional QA Engineer.
+You are a professional QA Engineer working on an enterprise system.
 
-RULES:
+==============================
+SOURCE OF TRUTH (VERY IMPORTANT)
+==============================
+
+The ONLY valid sources for generating test cases are:
+1. The Requirement text provided below
+2. ALL attached images
+
+IMPORTANT:
+- Multiple images may be provided.
+- ALL images represent REQUIRED context.
+- You MUST consider ALL images together before generating test cases.
+- Do NOT base test cases on only one image.
++ - Adding more images MUST NOT reduce coverage.
++ - If more UI elements or rules are visible,
++   expand test cases within the SAME scope.
+
+
+DO NOT use external knowledge.
+DO NOT infer generic flows (Login, Registration, Authentication)
+unless explicitly mentioned in the Requirement or visible in images.
+
+==============================
+STRICT DOMAIN RULES
+==============================
+
+Generate test cases ONLY within the scope of the Requirement and images.
+If unsure whether a test case is in scope:
+- DISCARD it.
+
+==============================
+OUTPUT RULES
+==============================
+
 - Respond ONLY in English.
 - Output ONLY a valid JSON array.
 - Steps MUST NOT include numbering.
 
-Generate a MINIMUM of 10 test cases.
-Do NOT generate fewer than 10.
+==============================
+FORMAT
+==============================
 
-MANDATORY FIELDS:
-- Type
-- Pre-conditions
-
-JSON FORMAT:
 [
   {
     "Title": "",
@@ -59,12 +91,20 @@ JSON FORMAT:
   }
 ]
 
+==============================
+INPUT
+==============================
+
 Requirement:
 {{REQUIREMENT}}
 
+Flow rule:
 {{FLOW_RULE}}
 `;
 
+/* ============================================================
+   PROMPT BUILDER
+============================================================ */
 function buildPrompt(req, flowRule) {
   return PROMPT
     .replace("{{REQUIREMENT}}", req)
@@ -95,21 +135,188 @@ function generateTCNumber(i) {
   return `TC-${String(i + 1).padStart(3, "0")}`;
 }
 
-/* ============================================================
-   NORMALIZE AI RESPONSE
-============================================================ */
 function normalizeTestCase(tc) {
   return {
-    title: tc.Title ?? "Untitled Test Case",
-    type: tc.Type ?? "",
+    title: tc.Title || "",
+    type: tc.Type || "",
     preconditions: normalizeArray(tc["Pre-conditions"]),
     steps: normalizeArray(tc.Steps),
     expected: normalizeArray(tc["Expected Result"])
   };
 }
 
+function extractFieldName(title) {
+  if (!title) return null;
+
+  // QA-style heuristic:
+  // "Verify <Field> ..." → extract <Field>
+  const match = title.match(
+    /^verify\s+(.+?)(\s+when|\s+is|\s+are|\s+display|\s+behavior|$)/i
+  );
+
+  return match ? match[1].trim() : null;
+}
+``
+
+/**
+ * Option 1:
+ * Split test cases that combine multiple fields into separate test cases
+ * without creating new scenarios.
+ */
+function splitCombinedTestCases(tcList) {
+  const result = [];
+
+  tcList.forEach(tc => {
+    const title = tc.Title || "";
+
+    // ถ้า Title มี "and" หรือ ","
+    if (title.includes(" and ") || title.includes(",")) {
+
+      // แยกด้วย "and" มาก่อน ถ้าไม่มีค่อยใช้ comma
+      const parts = title.includes(" and ")
+        ? title.split(" and ")
+        : title.split(",");
+
+      parts.forEach(part => {
+        const clean = part.trim();
+        if (!clean) return;
+
+        result.push({
+          ...tc,
+          Title: clean,
+          Type: tc.Type || "Functional"
+        });
+      });
+
+    } else {
+      // ถ้าไม่ต้อง split ใช้ของเดิม
+      result.push(tc);
+    }
+  });
+
+  return result;
+}
+
+function enrichNegativeAndEmpty(tcList) {
+  if (!ENABLE_OPTION_4_ENRICH) return tcList;
+
+  const enriched = [...tcList];
+  const coverage = {}; // { fieldName: { negative: bool, empty: bool } }
+
+  // วิเคราะห์ coverage ที่มีอยู่
+  tcList.forEach(tc => {
+    const field = extractFieldName(tc.Title);
+    if (!field) return;
+
+    coverage[field] = coverage[field] || { negative: false, empty: false };
+
+    const t = (tc.Title + " " + (tc.Type || "")).toLowerCase();
+    if (t.includes("invalid") || t.includes("negative")) {
+      coverage[field].negative = true;
+    }
+    if (t.includes("empty") || t.includes("blank") || t.includes("missing")) {
+      coverage[field].empty = true;
+    }
+  });
+
+  // ใช้ Functional TC เป็น base
+  const baseTCs = tcList.filter(tc =>
+    (tc.Type || "").toLowerCase().includes("functional")
+  );
+
+  baseTCs.forEach(baseTC => {
+    const field = extractFieldName(baseTC.Title);
+    if (!field) return;
+
+    coverage[field] = coverage[field] || { negative: false, empty: false };
+
+    // ✅ Negative (1 ครั้งต่อ field)
+    if (!coverage[field].negative) {
+      enriched.push({
+        ...baseTC,
+        Title: `Verify ${field} validation when invalid value is entered`,
+        Type: "Negative",
+        ExpectedResult: [
+          "System displays validation message and prevents saving invalid data"
+        ]
+      });
+      coverage[field].negative = true;
+    }
+
+    // ✅ Empty (1 ครั้งต่อ field)
+    if (!coverage[field].empty) {
+      enriched.push({
+        ...baseTC,
+        Title: `Verify ${field} behavior when mandatory field is left empty`,
+        Type: "Edge Case",
+        ExpectedResult: [
+          "System enforces mandatory field rule and displays appropriate message"
+        ]
+      });
+      coverage[field].empty = true;
+    }
+  });
+
+  return enriched;
+}
+
+/**
+ * Option 4:
+ * Enrich test cases with Negative and Empty scenarios
+ * without inventing new features.
+ */
+function enrichNegativeAndEmpty(tcList) {
+  const enriched = [...tcList];
+
+  const hasNegative = tcList.some(tc =>
+    (tc.Type || "").toLowerCase().includes("negative") ||
+    (tc.Title || "").toLowerCase().includes("invalid")
+  );
+
+  const hasEmpty = tcList.some(tc =>
+    (tc.Title || "").toLowerCase().includes("empty") ||
+    (tc.Title || "").toLowerCase().includes("blank") ||
+    (tc.Title || "").toLowerCase().includes("missing")
+  );
+
+  // ใช้ test case แรกที่เป็น Functional เป็น base
+  const baseTC = tcList.find(tc =>
+    (tc.Type || "").toLowerCase().includes("functional")
+  ) || tcList[0];
+
+  if (!baseTC) return enriched;
+
+  // ✅ เติม Negative
+  if (!hasNegative) {
+    enriched.push({
+      ...baseTC,
+      Title: `${baseTC.Title} - invalid value`,
+      Type: "Negative",
+      ExpectedResult: [
+        "System displays validation error and prevents saving invalid value"
+      ]
+    });
+  }
+
+  // ✅ เติม Empty / Missing
+  if (!hasEmpty) {
+    enriched.push({
+      ...baseTC,
+      Title: `${baseTC.Title} - empty or missing value`,
+      Type: "Edge Case",
+      ExpectedResult: [
+        "System handles empty value according to validation rules"
+      ]
+    });
+  }
+
+  return enriched;
+}
+
+
+
 /* ============================================================
-   COLUMN STRUCTURE UI
+   COLUMN STRUCTURE UI (DEFAULT PLACEHOLDER ✅)
 ============================================================ */
 function renderColumnTable() {
   const tbody = document.getElementById("columnTableBody");
@@ -119,16 +326,16 @@ function renderColumnTable() {
   dynamicColumns.forEach((col, i) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td class="border p-2 text-center">${i + 1}</td>
-      <td class="border p-2">
+      <td class="border p-1 text-center">${i + 1}</td>
+      <td class="border p-1">
         <input class="w-full p-1 border rounded" value="${col.name}">
       </td>
-      <td class="border p-2">
+      <td class="border p-1">
         <input class="w-full p-1 border rounded bg-yellow-50"
                placeholder="Default value"
                value="${col.value}">
       </td>
-      <td class="border p-2 text-center"></td>
+      <td class="border p-1 text-center"></td>
     `;
 
     tr.querySelectorAll("input")[0].oninput = e =>
@@ -137,8 +344,8 @@ function renderColumnTable() {
       (dynamicColumns[i].value = e.target.value);
 
     const btn = document.createElement("button");
-    btn.className = "bg-red-500 text-white px-2 py-1 rounded";
     btn.innerText = "Remove";
+    btn.className = "bg-red-600 text-white px-2 py-1 rounded";
     btn.onclick = () => removeColumn(i);
 
     tr.children[3].appendChild(btn);
@@ -157,41 +364,37 @@ function removeColumn(i) {
 }
 
 /* ============================================================
-   IMAGE PREVIEW – BASE64 SAFE ✅
+   IMAGE HANDLING (UPLOAD / DROP / PASTE ✅)
 ============================================================ */
 function renderImages() {
-  const container = document.getElementById("imagePreviewContainer");
-  if (!container) return;
-  container.innerHTML = "";
+  const box = document.getElementById("imagePreviewContainer");
+  if (!box) return;
+  box.innerHTML = "";
 
-  pastedImages.forEach((base64, index) => {
-    const wrapper = document.createElement("div");
-    wrapper.className =
-      "relative w-32 h-32 border rounded bg-white flex items-center justify-center";
+  pastedImages.forEach((b64, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "relative w-24 h-24 border rounded flex items-center justify-center";
 
     const img = document.createElement("img");
-    img.src = base64;
+    img.src = b64;
     img.className = "max-w-full max-h-full object-contain";
 
     const btn = document.createElement("button");
-    btn.className =
-      "absolute -top-2 -right-2 bg-red-600 text-white w-6 h-6 rounded-full";
     btn.innerText = "✕";
-    btn.onclick = () => removeImg(index);
+    btn.className = "absolute -top-2 -right-2 bg-red-600 text-white w-5 h-5 rounded-full";
+    btn.onclick = () => {
+      pastedImages.splice(i, 1);
+      renderImages();
+    };
 
-    wrapper.appendChild(img);
-    wrapper.appendChild(btn);
-    container.appendChild(wrapper);
+    wrap.appendChild(img);
+    wrap.appendChild(btn);
+    box.appendChild(wrap);
   });
 }
 
-function removeImg(i) {
-  pastedImages.splice(i, 1);
-  renderImages();
-}
-
 function handleUpload(files) {
-  for (let file of files) {
+  for (const file of files) {
     if (!file.type.startsWith("image/")) continue;
     const reader = new FileReader();
     reader.onload = e => {
@@ -203,38 +406,37 @@ function handleUpload(files) {
 }
 
 function initImageInputs() {
-  const uploadInput = document.getElementById("uploadInput");
-  const dropZone = document.getElementById("dropZone");
+  const upload = document.getElementById("uploadInput");
+  const drop = document.getElementById("dropZone");
 
-  if (uploadInput) {
-    uploadInput.onchange = e => handleUpload(e.target.files);
-  }
+  if (upload) upload.onchange = e => handleUpload(e.target.files);
 
-  if (dropZone) {
-    dropZone.addEventListener("dragover", e => {
+  if (drop) {
+    drop.addEventListener("dragover", e => {
       e.preventDefault();
-      dropZone.classList.add("bg-slate-200");
+      drop.classList.add("dragover");
     });
-    dropZone.addEventListener("dragleave", () =>
-      dropZone.classList.remove("bg-slate-200")
-    );
-    dropZone.addEventListener("drop", e => {
+    drop.addEventListener("dragleave", () =>
+      drop.classList.remove("dragover"));
+    drop.addEventListener("drop", e => {
       e.preventDefault();
-      dropZone.classList.remove("bg-slate-200");
+      drop.classList.remove("dragover");
       handleUpload(e.dataTransfer.files);
     });
   }
 
+  // ✅ CTRL + V Paste Image
   document.addEventListener("paste", e => {
     const items = e.clipboardData?.items || [];
     for (let item of items) {
       if (!item.type.startsWith("image/")) continue;
+      const file = item.getAsFile();
       const reader = new FileReader();
       reader.onload = ev => {
         pastedImages.push(ev.target.result);
         renderImages();
       };
-      reader.readAsDataURL(item.getAsFile());
+      reader.readAsDataURL(file);
       e.preventDefault();
     }
   });
@@ -246,8 +448,8 @@ function initImageInputs() {
 function getFlowRule() {
   const v = document.querySelector('input[name="flowMode"]:checked')?.value;
   return v === "single"
-    ? "All images represent one user flow."
-    : "Each image represents different flows.";
+    ? "All images represent one flow."
+    : "Each image may represent different flows.";
 }
 
 /* ============================================================
@@ -259,9 +461,9 @@ async function generateTC() {
   const model = document.getElementById("modelName").value;
   const req = document.getElementById("requirement").value;
 
-  if (!apiKey || !baseUrl) return alert("Please enter BASE URL and API KEY");
-  if (!req.trim() && pastedImages.length === 0)
-    return alert("Please provide Requirement or Image");
+  if (!apiKey || !baseUrl) return alert("Missing API config");
+  if (!req && pastedImages.length === 0)
+    return alert("Provide requirement or image");
 
   document.getElementById("loading").classList.remove("hidden");
   document.getElementById("result").innerHTML = "";
@@ -277,17 +479,35 @@ async function generateTC() {
         model,
         messages: [{
           role: "user",
-          content: [{ type: "text", text: buildPrompt(req, getFlowRule()) }]
+          content: [
+            { type: "text", text: buildPrompt(req, getFlowRule()) },
+            ...pastedImages.map(img => ({
+              type: "image_url",
+              image_url: { url: img }
+            }))
+          ]
         }]
       })
     });
 
-    const json = await res.json();
-    const cleaned = extractJson(json?.choices?.[0]?.message?.content || "");
-    jsonOutput = JSON.parse(cleaned || []);
+    const data = await res.json();
+    const jsonStr = extractJson(data?.choices?.[0]?.message?.content || "");
+    if (!jsonStr) throw new Error("Invalid AI response");
 
-    renderAccordion(jsonOutput);
-    document.getElementById("exportSection").classList.remove("hidden");
+let rawList = JSON.parse(jsonStr);
+
+// ✅ Option 1: split combined test cases
+rawList = splitCombinedTestCases(rawList);
+rawList = enrichNegativeAndEmpty(rawList);
+
+// ✅ Option 4: enrich Negative + Empty
+rawList = enrichNegativeAndEmpty(rawList);
+
+jsonOutput = rawList;
+renderAccordion(jsonOutput);
+document.getElementById("exportSection").classList.remove("hidden");
+``
+
   } catch (e) {
     console.error(e);
     alert("Generate failed");
@@ -297,73 +517,62 @@ async function generateTC() {
 }
 
 /* ============================================================
-   RESULT UI (WITH COPY PER TEST CASE ✅)
+   RESULT UI + COPY
 ============================================================ */
 function renderAccordion(list) {
   const box = document.getElementById("result");
   box.innerHTML = "";
 
-  list.forEach((rawTc, i) => {
-    const tc = normalizeTestCase(rawTc);
+  list.forEach((raw, i) => {
+    const tc = normalizeTestCase(raw);
 
     box.insertAdjacentHTML("beforeend", `
-      <div class="border rounded shadow bg-white mb-4 p-4">
-        <b>${generateTCNumber(i)} — ${tc.title}</b>
+      <div class="border rounded bg-white mb-3">
 
-        <div class="mt-2"><b>Type:</b> ${tc.type}</div>
-
-        <div class="mt-2"><b>Pre-conditions:</b>
-          <ul class="ml-6 list-disc">
-            ${tc.preconditions.map(p => `<li>${p}</li>`).join("")}
-          </ul>
+        <!-- HEADER: จะแสดงตลอด -->
+        <div class="p-3 font-semibold bg-slate-100">
+          ${generateTCNumber(i)} — ${tc.title}
         </div>
 
-        <div class="mt-2"><b>Steps:</b>
-          <ol class="ml-6 list-decimal">
-            ${tc.steps.map(s => `<li>${stripNumber(s)}</li>`).join("")}
-          </ol>
-        </div>
+        <!-- DETAIL: เอาไว้หุบ/ขยาย -->
+        <div class="tc-detail p-4">
 
-        <div class="mt-2"><b>Expected Result:</b>
-          <ul class="ml-6 list-disc">
-            ${tc.expected.map(e => `<li>${e}</li>`).join("")}
-          </ul>
-        </div>
+          <div><b>Type:</b> ${tc.type}</div>
 
-        <div class="mt-4">
+          <div><b>Pre-conditions:</b>
+            <ul>
+              ${tc.preconditions.map(p => `<li>${p}</li>`).join("")}
+            </ul>
+          </div>
+
+          <div><b>Steps:</b>
+            <ol>
+              ${tc.steps.map(s => `<li>${stripNumber(s)}</li>`).join("")}
+            </ol>
+          </div>
+
+          <div><b>Expected Result:</b>
+            <ul>
+              ${tc.expected.map(e => `<li>${e}</li>`).join("")}
+            </ul>
+          </div>
+
           <button
-            class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded"
+            class="bg-orange-600 text-white px-2 py-1 rounded mt-2 text-xs"
             onclick="copySingleToJira(${i})">
             📋 Copy This Test Case
           </button>
+
         </div>
       </div>
     `);
   });
 }
 
-/* ============================================================
-   CONTROL BAR FUNCTIONS ✅
-============================================================ */
-function expandAll() {
-  document.querySelectorAll("#result > div").forEach(el =>
-    el.classList.remove("hidden"));
-}
-
-function collapseAll() {
-  document.querySelectorAll("#result > div").forEach(el =>
-    el.classList.add("hidden"));
-}
-
-/* ============================================================
-   COPY FUNCTIONS
-============================================================ */
-function copySingleToJira(index) {
-  const tc = normalizeTestCase(jsonOutput[index]);
-  const tcNo = generateTCNumber(index);
-
-  const text = `
-${tcNo} — ${tc.title}
+function copySingleToJira(i) {
+  const tc = normalizeTestCase(jsonOutput[i]);
+  navigator.clipboard.writeText(
+`${generateTCNumber(i)} — ${tc.title}
 
 Type:
 ${tc.type}
@@ -372,23 +581,19 @@ Pre-conditions:
 ${tc.preconditions.map(p => `- ${p}`).join("\n")}
 
 Steps:
-${tc.steps.map((s, i) => `${i + 1}. ${stripNumber(s)}`).join("\n")}
+${tc.steps.map((s, idx) => `${idx + 1}. ${stripNumber(s)}`).join("\n")}
 
 Expected Result:
 ${tc.expected.map(e => `- ${e}`).join("\n")}
-`.trim();
-
-  navigator.clipboard.writeText(text);
+`);
 }
 
 function copyAllToJira() {
   let text = "";
-  jsonOutput.forEach((rawTc, i) => {
-    const tc = normalizeTestCase(rawTc);
-    const tcNo = generateTCNumber(i);
-
+  jsonOutput.forEach((_, i) => {
+    const tc = normalizeTestCase(jsonOutput[i]);
     text += `
-${tcNo} — ${tc.title}
+${generateTCNumber(i)} — ${tc.title}
 
 Type:
 ${tc.type}
@@ -402,33 +607,29 @@ ${tc.steps.map((s, idx) => `${idx + 1}. ${stripNumber(s)}`).join("\n")}
 Expected Result:
 ${tc.expected.map(e => `- ${e}`).join("\n")}
 --------------------
-`.trim() + "\n\n";
+`;
   });
-
-  navigator.clipboard.writeText(text);
+  navigator.clipboard.writeText(text.trim());
 }
 
-/* ============================================================
-   EXPORT EXCEL
-============================================================ */
 function exportExcel() {
   const headers = dynamicColumns.map(c => c.name);
-  const data = [headers];
+  const wsData = [headers];
 
-  jsonOutput.forEach((rawTc, tcIndex) => {
-    const tc = normalizeTestCase(rawTc);
+  jsonOutput.forEach((raw, i) => {
+    const tc = normalizeTestCase(raw);
 
-    data.push(dynamicColumns.map(col =>
-      col.name === "TC no." ? generateTCNumber(tcIndex)
+    wsData.push(dynamicColumns.map(col =>
+      col.name === "TC no." ? generateTCNumber(i)
       : col.name === "Test case description" ? tc.title
       : col.value
     ));
 
-    tc.steps.forEach((step, i) => {
-      data.push(dynamicColumns.map(col =>
-        col.name === "Step no." ? i + 1
+    tc.steps.forEach((step, idx) => {
+      wsData.push(dynamicColumns.map(col =>
+        col.name === "Step no." ? idx + 1
         : col.name === "Step description" ? stripNumber(step)
-        : col.name === "Expected result" ? tc.expected[i] || ""
+        : col.name === "Expected result" ? tc.expected[idx] || ""
         : ""
       ));
     });
@@ -437,19 +638,25 @@ function exportExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.aoa_to_sheet(data),
+    XLSX.utils.aoa_to_sheet(wsData),
     "TestCases"
   );
   XLSX.writeFile(wb, "AI_Test_Cases.xlsx");
 }
 
 /* ============================================================
-   EXPOSE GLOBAL FUNCTIONS ✅
+   EXPOSE FUNCTIONS (CRITICAL FOR BUTTONS)
 ============================================================ */
 window.generateTC = generateTC;
-window.expandAll = expandAll;
-window.collapseAll = collapseAll;
-window.copyAllToJira = copyAllToJira;
+window.expandAll = () => {
+  document.querySelectorAll(".tc-detail")
+    .forEach(d => d.classList.remove("hidden"));
+};
+
+window.collapseAll = () => {
+  document.querySelectorAll(".tc-detail")
+    .forEach(d => d.classList.add("hidden"));
+};window.copyAllToJira = copyAllToJira;
 window.copySingleToJira = copySingleToJira;
 window.exportExcel = exportExcel;
 window.addColumn = addColumn;

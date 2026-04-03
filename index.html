@@ -1,175 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
   <title>AI Test Case Generator (Enhanced Version)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- ✅ Favicon (Base64) -->
-  <link rel="icon" type="image/png" href="favicon.png">
-  
   <!-- ✅ Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- ✅ SheetJS -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-
-  <!-- ✅ Custom CSS -->
-  <link rel="stylesheet" href="style.css" />
 </head>
 
-<body class="bg-slate-100 p-6">
+<body class="bg-slate-100 p-4">
 
-  <div class="max-w-7xl mx-auto bg-white p-8 rounded-lg shadow-xl border">
+<div class="max-w-7xl mx-auto bg-white p-6 rounded shadow">
+  <h1 class="text-2xl font-bold mb-4">🧪 AI Test Case Generator (Enhanced Version)</h1>
 
-    <h1 class="text-3xl font-bold mb-8 text-slate-900">
-      🧪 AI Test Case Generator (Enhanced Version)
-    </h1>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-    <!-- ✅ 1. API CONFIG -->
-    <section class="section-box">
-      <h2 class="section-title">1. API Configuration</h2>
+    <!-- ================= LEFT COLUMN ================= -->
+    <div>
 
-      <div class="grid md:grid-cols-2 gap-6">
-        <div>
-          <label class="label">BASE URL</label>
-          <input id="baseUrl" class="input border-blue-400" placeholder="Enter BASE URL" />
-        </div>
+      <!-- 1. API Configuration -->
+      <section class="mb-6">
+        <h2 class="font-semibold mb-2">1. API Configuration</h2>
 
-        <div>
-          <label class="label">API KEY *</label>
-          <input id="apiKey" type="password" class="input border-blue-400" placeholder="Your API Key" />
-        </div>
+        <label class="text-sm font-semibold">Base URL</label>
+        <input id="baseUrl" class="border p-2 rounded w-full mb-2"
+               placeholder="Enter BASE URL" />
 
-        <div class="md:col-span-2">
-          <label class="label">Model Name</label>
-          <select id="modelName" class="input bg-white">
-            <option value="do-gemini-3-flash-preview">do-gemini-3-flash-preview</option>
-            <option value="do-gemini-2.5-flash">do-gemini-2.5-flash</option>
-            <option value="gpt-4.1-mini">gpt-4.1-mini</option>
-          </select>
-        </div>
-      </div>
-    </section>
+        <label class="text-sm font-semibold">API Key</label>
+        <input id="apiKey" type="password"
+               class="border p-2 rounded w-full mb-2"
+               placeholder="Enter API Key" />
 
-    <div class="grid md:grid-cols-2 gap-6">
+        <label class="text-sm font-semibold">Model Name</label>
+        <select id="modelName"
+                class="border p-2 rounded w-full text-sm
+                       focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="do-gemini-3-flash-preview">do-gemini-3-flash-preview</option>
+          <option value="do-gemini-2.5-flash">do-gemini-2.5-flash</option>
+          <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+        </select>
+      </section>
 
-      <!-- ✅ LEFT -->
-      <div>
+      <!-- 2. Prompt Builder -->
+      <section class="mb-6">
+        <h2 class="font-semibold mb-2">2. Prompt Builder</h2>
+        <select id="aiRole" class="border p-2 rounded w-full text-sm">
+          <option>QA Engineer</option>
+          <option>UAT Tester</option>
+          <option>Product Owner</option>
+        </select>
+      </section>
 
-        <!-- ✅ Prompt Builder -->
-        <section class="section-box">
-          <h2 class="section-title">2. Prompt Builder</h2>
+      <!-- 3. Requirement & Test Steps -->
+      <section class="mb-6">
+        <h2 class="font-semibold mb-2">3. Requirement & Test Steps</h2>
 
-          <label class="label">AI Role</label>
-          <select id="aiRole" class="input">
-            <option value="QA Engineer">QA Engineer</option>
-            <option value="UAT Tester">UAT Tester</option>
-            <option value="Developer">Developer</option>
-            <option value="Product Owner">Product Owner</option>
-            <option value="Custom">Custom</option>
-          </select>
-
-          <div id="customPromptBox" class="hidden mt-3">
-            <label class="label">Custom Prompt</label>
-            <textarea id="customPrompt" class="textarea"></textarea>
-          </div>
-        </section>
-
-        <!-- ✅ Requirement -->
-        <section class="section-box">
-          <h2 class="section-title">3. Requirement & Test Steps</h2>
-
-          <div id="dropZone" class="drop-zone" style="width:100%;height:180px;margin-bottom:12px;">
-            Drag & Drop Images Here<br /><br />
-            <button onclick="document.getElementById('uploadInput').click()" class="btn-upload">
-              📤 Upload Image
-            </button>
-            <input
-              id="uploadInput"
-              type="file"
-              accept="image/*"
-              class="hidden"
-              onchange="handleUpload(event)"
-            />
-          </div>
-
-          <!-- ✅ Flow Mode -->
-          <div class="mt-4 mb-4">
-            <label class="label">Flow Mode</label>
-            <div class="flex flex-col gap-2 mt-2 text-sm">
-              <label class="flex items-center gap-2">
-                <input type="radio" name="flowMode" value="multiple" checked />
-                <span>Multiple Flows (default) — each image is a separate flow</span>
-              </label>
-              <label class="flex items-center gap-2">
-                <input type="radio" name="flowMode" value="single" />
-                <span>Single Flow — images are continuous steps of the same flow</span>
-              </label>
-            </div>
-          </div>
-
-          <textarea id="requirement" class="textarea" rows="4" placeholder="Requirement"></textarea>
-
-          <div id="imagePreviewContainer" class="flex flex-wrap gap-4 mt-4"></div>
-
-          <label class="label mt-4">Test Steps</label>
-          <textarea id="testSteps" rows="3" class="textarea"></textarea>
-        </section>
-
-        <!-- ✅ Column Structure -->
-        <section class="section-box bg-yellow-50">
-          <h2 class="section-title">4. Column Structure</h2>
-
-          <table class="w-full border mb-3">
-            <thead class="bg-slate-300">
-              <tr>
-                <th class="table-h">#</th>
-                <th class="table-h">Column Name</th>
-                <th class="table-h">Action</th>
-              </tr>
-            </thead>
-            <tbody id="columnTableBody"></tbody>
-          </table>
-
-          <button onclick="addColumn()" class="btn-add-column">➕ Add Column</button>
-        </section>
-
-      </div>
-
-      <!-- ✅ RIGHT -->
-      <div>
-
-        <section class="section-box bg-purple-50">
-          <h2 class="section-title">5. Generate Settings</h2>
-          <button onclick="generateTC()" class="btn-generate">
-            🚀 Generate Test Cases
+        <div id="dropZone" class="border-2 border-dashed rounded p-5 text-center bg-slate-50 mb-4 cursor-pointer">
+          Drag & Drop Images Here<br><br>
+          <button class="bg-blue-600 text-white px-3 py-1 rounded"
+                  onclick="document.getElementById('uploadInput').click()">
+            Upload Image
           </button>
-        </section>
+          <input id="uploadInput" type="file" accept="image/*" multiple hidden>
+        </div>
 
-        <section id="resultSection" class="section-box mt-4">
-          <h2 class="section-title">✅ Generated Test Cases</h2>
+        <div class="mb-2">
+          <label class="font-semibold text-sm">Flow Mode</label><br>
+          <label><input type="radio" name="flowMode" value="multiple" checked> Multiple flows</label>
+          <label class="ml-4"><input type="radio" name="flowMode" value="single"> Single flow</label>
+        </div>
 
-          <div id="loading" class="hidden text-blue-600 font-semibold mt-2">
-            ⏳ Processing...
-          </div>
+        <div class="mb-2">
+          <label class="font-semibold text-sm">Prompt Mode</label>
+          <select id="promptMode" class="border p-2 rounded w-full text-sm">
+            <option value="standard">QA – Functional</option>
+            <option value="deep">QA – Risk & Security</option>
+            <option value="uat">Business Acceptance (UAT)</option>
+            <option value="regression">Technical Regression</option>
+          </select>
+        </div>
 
-          <div id="result" class="space-y-6 mt-4"></div>
+        <textarea id="requirement" rows="3"
+                  class="border p-2 rounded w-full mb-2"
+                  placeholder="Requirement"></textarea>
 
-          <div id="exportSection" class="hidden mt-4 flex gap-3 flex-wrap">
-            <button onclick="exportExcel()" class="btn-export flex-1">⬇️ Export Excel</button>
-            <button onclick="copyAllToJira()" class="btn-copy flex-1">📋 Copy All to Jira</button>
-          </div>
-        </section>
+        <textarea id="testSteps" rows="2"
+                  class="border p-2 rounded w-full"
+                  placeholder="Test Steps (optional)"></textarea>
 
-      </div>
+        <div id="imagePreviewContainer" class="flex gap-2 flex-wrap mt-3"></div>
+      </section>
+
+      <!-- 4. Column Structure -->
+      <section class="mb-6 bg-yellow-50 p-4 rounded">
+        <h2 class="font-semibold mb-2">4. Column Structure</h2>
+
+        <table class="w-full border text-sm">
+          <thead class="bg-slate-200">
+            <tr>
+              <th class="border p-1 w-10">#</th>
+              <th class="border p-1">Column Name</th>
+              <th class="border p-1">Default value</th>
+              <th class="border p-1 w-20">Action</th>
+            </tr>
+          </thead>
+          <tbody id="columnTableBody"></tbody>
+        </table>
+
+        <button class="mt-2 text-blue-600 text-sm" onclick="addColumn()">+ Add Column</button>
+      </section>
     </div>
 
+    <!-- ================= RIGHT COLUMN ================= -->
+    <div>
+
+      <!-- 5. Generate -->
+      <section class="mb-4 bg-slate-50 p-4 rounded border">
+        <h2 class="font-semibold mb-3">5. Generate</h2>
+        <button class="bg-green-700 hover:bg-green-800 text-white w-full py-2 rounded font-semibold"
+                onclick="generateTC()">
+          ✅ Generate Test Cases
+        </button>
+      </section>
+
+      <!-- Generated Test Cases -->
+      <section class="bg-slate-50 p-4 rounded border">
+        <h3 class="font-semibold mb-3">✅ Generated Test Cases</h3>
+
+        <div id="exportSection" class="hidden mb-3 flex flex-wrap gap-2">
+          <button class="bg-blue-600 text-white px-3 py-1 rounded text-sm" onclick="expandAll()">Expand All</button>
+          <button class="bg-slate-500 text-white px-3 py-1 rounded text-sm" onclick="collapseAll()">Collapse All</button>
+          <button class="bg-orange-600 text-white px-3 py-1 rounded text-sm" onclick="copyAllToJira()">Copy All to Jira</button>
+          <button class="bg-green-700 text-white px-3 py-1 rounded text-sm" onclick="exportExcel()">Export Excel</button>
+        </div>
+
+        <div id="loading" class="hidden text-blue-600 text-sm mb-2">Processing…</div>
+        <div id="result"></div>
+      </section>
+
+    </div>
   </div>
+</div>
 
-  <!-- ✅ LOAD JS (สำคัญที่สุด) -->
-  <script src="script.js"></script>
-
+<script src="script.js"></script>
 </body>
 </html>
-``
